@@ -64,7 +64,7 @@ what a check *reports*, not a status; a document with another status is never ch
 
 **Reset ("다시 대기", or a session reports it handled everything up to now)** — `get` the doc, then `update` with
 its `version` as `if_version`: `status` "open", `closed_at` null, `errors` 0, `session_notified` null,
-`session_notify_error` null, `since` and `reopened_at` = now
+`session_notify_error` null, `session_notify_via` null, `since` and `reopened_at` = now
 (ISO), plus a new `baseline`/`done_when` when the threshold moved (e.g. "page v25 or later"). Keep `memos`.
 A session that keeps resetting the same wait can do this itself; it does not need to go through another session.
 
@@ -99,6 +99,11 @@ bash ~/waits/waits.sh check [id]      # one tick now
 
 - A run that cannot reach the database increments `fail.count`; at 18 (3 h) the loop posts "[대기 루프 실패]".
 - Per-wait errors are counted in the doc; at 18 the checker marks it `stuck` and notifies.
+- A session message whose session is not running is delivered by resuming that session headless
+  (`claude -p --resume <session_id>`, read-only tools only, never while a live process holds it); the doc gets
+  `session_notify_via` "wake". Sessions are found by `session_id` and addressed by the socket of their newest live process (names change, and two processes can share a name). If delivery fails,
+  the message waits in `~/waits/session-queue.json` and is retried every tick, or now with `waits.sh flush`:
+  sent if the session is running, woken if not (3 wake tries, 24 h at most).
 - The board page source is `scripts/board.html`; republish it to the board URL after editing.
 - Notifications go through the webhook app because a Slack message the user's own account posts never
   notifies them; never use the Slack MCP send tool for this.

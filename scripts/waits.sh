@@ -4,6 +4,7 @@
 # and returns Slack texts that this script posts to a Slack channel through an incoming webhook.
 #
 #   waits.sh check [id]        one check tick (all open waits, or one)
+#   waits.sh flush             retry queued session messages whose session is running again
 #   waits.sh loop              check every $INTERVAL seconds forever
 #   waits.sh start | stop | status
 #   waits.sh notify '<text>'   post a Slack text by hand
@@ -24,14 +25,17 @@ mkdir -p "$DIR"
 LOG="$DIR/loop.log"
 PIDFILE="$DIR/loop.pid"
 FAILFILE="$DIR/fail.count"         # consecutive runs that could not reach the database
+QUEUE="$DIR/session-queue.json"     # session messages waiting for their session to come back
 INTERVAL="${INTERVAL:-600}"
 MODEL="${MODEL:-claude-sonnet-5-5}"
 WEBHOOK_FILE="$DIR/webhook.url"   # Slack incoming webhook URL (keep it mode 600; it is a secret)
 SLACK_MENTION="${SLACK_MENTION:-}"  # e.g. <@U0XXXXXXX> to mention yourself in every post
-# auto, not bypassPermissions: sessions hold cross-session messages from a bypassPermissions sender, so the
-# "대기가 끝났으니 확인해" message would never arrive.
+# The check run needs Bash (gh) without prompts, so it runs in auto mode. A session holds cross-session
+# messages from a sender in a more permissive mode than its own, so the "대기가 끝났으니 확인해" message is sent
+# from a separate default-mode run that may use only the messaging and database tools (deliver_session_messages).
 PERMISSION_MODE="${PERMISSION_MODE:-auto}"
 STUCK_AFTER="${STUCK_AFTER:-18}"   # consecutive failures (18 x 10 min = 3 h) before giving up
+QUEUE_HOURS="${QUEUE_HOURS:-24}"   # how long a session message waits for its session
 # Per-user settings live in $DIR/config.env (see config.env.example next to this script).
 [ -f "$DIR/config.env" ] && . "$DIR/config.env"
 ART_URL="${ART_URL:-}"              # your 대기 보드 artifact (required)
@@ -51,6 +55,15 @@ require_config() {
 }
 
 now() { date -Iseconds; }
+
+live_socket() { # $1 = session id -> socket of its newest live process, or nothing
+  local f pid
+  for f in "$HOME"/.claude/sessions/*.json; do
+    jq -e --arg s "$1" '.sessionId == $s and .messagingSocketPath != null' "$f" > /dev/null 2>&1 || continue
+    pid="$(jq -r .pid "$f")"; kill -0 "$pid" 2>/dev/null || continue
+    jq -r '"\(.startedAt) \(.messagingSocketPath)"' "$f"
+  done | sort -n | tail -1 | cut -d' ' -f2-
+}
 
 sessions_json() { # live sessions as [{session_id, name, title}]
   /usr/bin/python3 -I -c "import json,sys; sys.path.insert(0, sys.argv[1]); import sessions; print(json.dumps(sessions.live_sessions(), ensure_ascii=False))" "$CODE"
@@ -79,6 +92,7 @@ cmd_check() { # $1 = optional id: check only that wait
 - USER_SLACK_ID: $USER_SLACK_ID
 - GH_LOGIN: $GH_LOGIN
 - DEFAULT_REPO: ${DEFAULT_REPO:-(none)}
+- SESSIONS_PY: $CODE/sessions.py
 
 SESSIONS:
 \`\`\`json
@@ -98,6 +112,7 @@ $(sessions_json)
   fi
   results="$(echo "$block" | jq -c '.results')"
   notify_all "$results"
+  send_session_messages "$results"
   if [ "$(echo "$block" | jq -r '.db_ok')" = true ]; then echo 0 > "$FAILFILE"
   else run_failed "database read/write failed"; fi
   echo "$(now) checked${only:+ $only}: $(echo "$results" | jq -c 'map({id, status})')" >> "$LOG"
@@ -117,8 +132,127 @@ notify_all() { # post every notify text in a results array
   done
 }
 
+send_session_messages() { # $1 = results array
+  deliver_session_messages "$(echo "$1" | jq -c '[.[] | select(.status == "done" and .session_message.to != null and .session_message.text != null)
+                              | {id, to: .session_message.to, session_id: .session_message.session_id, text: .session_message.text}]')"
+}
+
+# Sessions come and go (an idle editor session's process exits and a new one starts later), so a message
+# whose session is not running waits in $QUEUE and is retried every tick until QUEUE_HOURS pass.
+flush_session_queue() {
+  [ -s "$QUEUE" ] || return 0
+  local cutoff q
+  cutoff="$(date -d "-${QUEUE_HOURS} hours" +%s)"
+  q="$(jq -c --argjson c "$cutoff" '[.[] | select(.queued_epoch >= $c and (.wake_tries // 0) < 3)]' "$QUEUE")"
+  echo "$q" > "$QUEUE"
+  [ "$(echo "$q" | jq length)" -gt 0 ] || return 0
+  echo "$(now) session queue: retrying $(echo "$q" | jq -c 'map(.id)')" >> "$LOG"
+  deliver_session_messages "$(echo "$q" | jq -c 'map({id, to, session_id, text, wake_tries})')"
+}
+
+# A wait's session may not be running (an idle editor session's process exits). Resume it headless so it can
+# check the result on its own; it gets read-only tools only, and its report lands in its transcript, which the
+# user sees on reopening it. Never resume a session a live process holds: two writers would tangle its transcript.
+WAKE_ALLOWED=(Read Grep Glob ToolSearch WebSearch ArtifactComments
+  "Bash(gh pr view:*)" "Bash(gh pr diff:*)" "Bash(gh pr checks:*)" "Bash(gh run view:*)" "Bash(gh issue view:*)"
+  "Bash(git log:*)" "Bash(git show:*)" "Bash(git diff:*)" "Bash(git status:*)"
+  mcp__claude_ai_Atlassian_MCP__getJiraIssue mcp__claude_ai_Atlassian_MCP__listJiraIssueComments
+  mcp__claude_ai_Atlassian_MCP__searchJiraIssuesUsingJql mcp__claude_ai_Atlassian_MCP__getConfluenceContent
+  mcp__claude_ai_Atlassian_MCP__executeRead mcp__claude_ai_Slack__slack_read_thread
+  mcp__claude_ai_Slack__slack_read_channel mcp__claude_ai_Claude_Docs__read mcp__claude_ai_Claude_Docs__query
+  mcp__claude_ai_Claude_Docs__guide)
+WAKE_DENIED=(Edit Write NotebookEdit SendMessage ArtifactData mcp__claude_ai_Slack__slack_send_message
+  mcp__claude_ai_Slack__slack_schedule_message mcp__claude_ai_Atlassian_MCP__executeWrite
+  mcp__claude_ai_Atlassian_MCP__executeDestructive mcp__claude_ai_Atlassian_MCP__addOrEditJiraIssueComment
+  mcp__claude_ai_Claude_Docs__batch mcp__claude_ai_Claude_Docs__update)
+
+wake_session() { # $1 = {id, session_id, text}; exit 0 when the resumed session ran and answered
+  local sid cwd transcript out
+  sid="$(echo "$1" | jq -r '.session_id // empty')"
+  [ -n "$sid" ] || return 1
+  sessions_json | jq -e --arg s "$sid" 'map(.session_id) | index($s)' > /dev/null && return 1
+  transcript="$(ls -t "$HOME"/.claude/projects/*/"$sid".jsonl 2>/dev/null | head -1)"
+  [ -n "$transcript" ] || return 1
+  cwd="$(grep -m1 -o '"cwd":"[^"]*"' "$transcript" | sed 's/^"cwd":"//; s/"$//')"
+  [ -d "$cwd" ] || return 1
+  out="$(cd "$cwd" && timeout 900 claude -p "$(echo "$1" | jq -r .text)
+
+(이 세션은 꺼져 있어서 대기 확인기가 화면 없이 깨웠습니다. 읽기 전용 도구만 쓸 수 있습니다. 결과를 확인하고 무엇이
+바뀌었는지, 다음에 할 일이 무엇인지 정리해 두세요. 승인·댓글·머지·게시처럼 밖에 흔적이 남는 일은 하지 마세요.)" \
+      --resume "$sid" --permission-mode default --allowedTools "${WAKE_ALLOWED[@]}" --disallowedTools "${WAKE_DENIED[@]}" \
+      --output-format json < /dev/null 2>> "$LOG" | jq -r '.result // empty')" || return 1
+  [ -n "$out" ] || return 1
+  echo "$(now) woke $sid for $(echo "$1" | jq -r .id): $(echo "$out" | tr '\n' ' ' | cut -c1-300)" >> "$LOG"
+}
+
+deliver_session_messages() { # $1 = [{id, to, session_id, text}]
+  # Delivery runs in default mode (sessions hold messages from a more permissive sender), but a default-mode -p
+  # run cannot write the database, so a second, auto-mode run that may use only ArtifactData records outcomes.
+  local msgs="$1" out outcomes
+  [ "$(echo "$msgs" | jq length)" -gt 0 ] || return 0
+  # Names change and two processes can share one (or hold the same session id), so a live session is addressed
+  # by the socket of its newest process, found by session id. Only a session with no id falls back to its name.
+  local m2='[]' one sock
+  while read -r one; do
+    sock="$(live_socket "$(echo "$one" | jq -r '.session_id // empty')")"
+    [ -n "$sock" ] && one="$(echo "$one" | jq -c --arg t "uds:$sock" '.to = $t')"
+    m2="$(echo "$m2" | jq -c --argjson o "$one" '. + [$o]')"
+  done < <(echo "$msgs" | jq -c '.[]')
+  msgs="$m2"
+  out="$(cd "$DIR" && timeout 300 claude -p "Deliver finished-wait messages to other Claude sessions on this machine.
+Load the tools with ToolSearch \"select:SendMessage,ListAgents\". For each entry in MESSAGES: if \"to\" starts with
+\"uds:\", SendMessage to exactly that address; otherwise call ListAgents (once) and send to the row whose name equals
+\"to\" (none: outcome \"error 세션 없음\"). Send \"text\" verbatim; outcome \"ok\", or \"error <reason>\" if the send failed
+(a refused or vanished socket counts as \"error 세션 없음\"). Send nothing else to anyone.
+Finish with exactly one line per entry and nothing after: <id> ok   or   <id> error <reason>
+MESSAGES:
+$msgs" --model "$MODEL" --permission-mode default --allowedTools ToolSearch SendMessage ListAgents \
+          --disallowedTools Bash Edit Write NotebookEdit ArtifactData mcp__claude_ai_Slack__slack_send_message \
+          --output-format json < /dev/null 2>> "$LOG" | jq -r '.result // empty')" || true
+  outcomes="$(echo "$out" | grep -E '^[wt][0-9]+ (ok|error)' | jq -Rnc --arg ts "$(now)" '[inputs | capture("^(?<id>\\S+) (?<ok>ok|error) ?(?<why>.*)$")
+      | if .ok == "ok" then {id, fields: {session_notified: $ts, session_notify_error: null}}
+        else {id, fields: {session_notify_error: (if .why == "" then "error" else .why end)}} end]')"
+  # Anything without a reported outcome counts as undelivered.
+  outcomes="$(jq -nc --argjson m "$msgs" --argjson o "${outcomes:-[]}" \
+      '$o + [$m[] | .id as $i | select(([$o[].id] | index($i)) == null) | {id: $i, fields: {session_notify_error: "전송 run 결과 없음"}}]')"
+  # Wake the sessions that are not running; what cannot be woken waits in the queue.
+  local m
+  while read -r m; do
+    [ -n "$m" ] || continue
+    if wake_session "$m"; then
+      outcomes="$(echo "$outcomes" | jq -c --arg i "$(echo "$m" | jq -r .id)" --arg ts "$(now)" \
+        'map(if .id == $i then {id, fields: {session_notified: $ts, session_notify_via: "wake", session_notify_error: null}} else . end)')"
+    else
+      msgs="$(echo "$msgs" | jq -c --arg i "$(echo "$m" | jq -r .id)" 'map(if .id == $i then .wake_tries = ((.wake_tries // 0) + 1) else . end)')"
+    fi
+  done < <(jq -nc --argjson m "$msgs" --argjson o "$outcomes" \
+            '($o | map(select(.fields.session_notify_error == "세션 없음") | .id)) as $miss | $m[] | .id as $i | select($miss | index($i))')
+  echo "$(now) session messages: $(echo "$outcomes" | jq -c 'map({id} + .fields)')" >> "$LOG"
+  # Queue what found no session; drop from the queue what was delivered.
+  local q; q="$(cat "$QUEUE" 2>/dev/null || echo '[]')"
+  q="$(jq -nc --argjson q "$q" --argjson m "$msgs" --argjson o "$outcomes" --argjson e "$(date +%s)" '
+      ($o | map(select(.fields.session_notify_error == "세션 없음") | .id)) as $miss
+      | ($o | map(select(.fields.session_notified != null) | .id)) as $sent
+      | ($q | map(select(.id as $i | ($sent + $miss) | index($i) | not)))
+        + [$m[] | .id as $i | select($miss | index($i)) | . + {queued_epoch: (($q | map(select(.id == $i)) | .[0].queued_epoch) // $e)}]')"
+  echo "$q" > "$QUEUE"
+  (cd "$DIR" && timeout 300 claude -p "Record outcomes in an artifact database. Load ArtifactData with ToolSearch
+\"select:ArtifactData\". For each entry in OUTCOMES: ArtifactData get on $ART_URL, collection waits, doc_id = id; then
+ArtifactData update on that doc pinned with that version, passing the entry's \"fields\" object itself as the
+update's data (so the document gets top-level fields such as session_notified; never nest them under another key).
+On a version conflict, re-read and redo. Write nothing else.
+OUTCOMES:
+$outcomes" --model "$MODEL" --permission-mode auto --allowedTools ToolSearch ArtifactData \
+      --disallowedTools Bash Edit Write NotebookEdit SendMessage mcp__claude_ai_Slack__slack_send_message \
+      --output-format json < /dev/null > /dev/null 2>> "$LOG") || echo "$(now) session outcome record failed" >> "$LOG"
+}
+
 cmd_loop() {
-  while :; do cmd_check || echo "$(now) tick error" >> "$LOG"; sleep "$INTERVAL"; done
+  while :; do
+    cmd_check || echo "$(now) tick error" >> "$LOG"
+    flush_session_queue || echo "$(now) session queue error" >> "$LOG"
+    sleep "$INTERVAL"
+  done
 }
 
 cmd_start() {
@@ -138,10 +272,11 @@ cmd_status() {
 }
 
 case "${1:-}" in
-  check|loop|start|notify) require_config ;;
+  check|loop|start|notify|flush) require_config ;;
 esac
 case "${1:-}" in
   check) cmd_check "${2:-}" ;;
+  flush) flush_session_queue ;;
   loop) cmd_loop ;;
   start) cmd_start ;;
   stop) cmd_stop ;;

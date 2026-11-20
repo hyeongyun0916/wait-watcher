@@ -39,16 +39,22 @@ on ART_URL only, collection `waits`, one document per entry (doc id = entry id).
    (one `batch` if several). A version conflict means the user restored or edited it: skip it this run.
 
 Never delete documents except in step 6, and never touch fields other than the ones named here, the session
-fields below, and `session_notified`/`session_notify_error` from "Telling the waiting session".
+fields below.
 
 ## Sessions
 
-SESSIONS below maps live Claude session ids to their current messaging name and UI title.
-- For each document you read with a `session_id` in SESSIONS: if its `session` or `session_title` differs from
-  the map, include the new values in that document's update (`session` = name, `session_title` = title).
+SESSIONS below maps live Claude session ids to their current messaging name and UI title. Users rename
+sessions, and the board must show the current names on every document, open or closed. In step 6's listing,
+for every document without `deleted_at` that has a `session_id`:
+- id in SESSIONS: if `session` or `session_title` differs from the map, update both (`session` = name,
+  `session_title` = title).
+- id not in SESSIONS (not running): run `/usr/bin/python3 -I SESSIONS_PY "<session_id>"` once per distinct id
+  (prints JSON {session_id, name, title}); where `title` is non-null and differs from `session_title`, update
+  `session_title` only.
+Pin each update with the version from the listing and batch them; skip a document on a version conflict.
 - For an open todo with `session_hint` and no `session_id`: resolve it with
-  `/usr/bin/python3 -I $HOME/waits/sessions.py "<session_hint>"` (prints JSON {session_id, name, title}); if
-  session_id is non-null, update the todo with `session_id`, `session`, `session_title`. Otherwise leave it.
+  `/usr/bin/python3 -I SESSIONS_PY "<session_hint>"`; if session_id is non-null, update the todo with
+  `session_id`, `session`, `session_title`. Otherwise leave it.
 
 ## How to check, by kind
 
@@ -95,16 +101,12 @@ on the next run instead of notifying twice.
 
 ## Telling the waiting session
 
-When a wait turns done (including a passed deadline) and its write succeeded, also tell the session that
-registered it, unless the document has `notify_session` false (missing means true):
-1. Load SendMessage and ListAgents (ToolSearch "select:SendMessage,ListAgents") once per run; call ListAgents.
-2. Find the row whose name equals the document's `session`, else its `session_title`. Send to that name:
-   `[대기 완료] 대기가 끝났으니 확인해: <title>` on the first line, then what happened (same lines as the Slack
-   text), the link, and `대기 id <id>`. This message only reports; it asks nothing of the session beyond checking.
-3. Update the document (pinned to the version the done-write returned) with `session_notified` = CHECKED_AT when
-   the send succeeded, or `session_notify_error` = "<세션 없음 | 이유>" when no row matched or the send failed.
-   Never retry a send on a later run; Slack has already notified the user.
-Send nothing to any other session, and nothing for pending, error or stuck results.
+When a wait turns done (including a passed deadline) and its write succeeded, and the document's
+`notify_session` is not false (missing means true), add a `session_message` to that result:
+`{"to": "<the document's session, else session_title>", "session_id": "<the document's session_id>", "text": "<message>"}`. The message is
+`[대기 완료] 대기가 끝났으니 확인해: <title>` on the first line, then what happened (same lines as the Slack text),
+the link, and `대기 id <id>`. Do not send it yourself and do not write `session_notified`; the script sends it
+from a separate run and records the outcome. No `session_message` for pending, error or stuck results.
 
 ## Output
 
@@ -112,5 +114,5 @@ Finish with this block and nothing after it. `db_ok` is false if you could not r
 write results for the waits you checked.
 
 <<<RESULTS
-{"db_ok": true, "results": [{"id": "<id>", "status": "done|pending|error|stuck", "detail": "<what you saw>", "notify": "<Slack text, only for done/stuck>"}]}
+{"db_ok": true, "results": [{"id": "<id>", "status": "done|pending|error|stuck", "detail": "<what you saw>", "notify": "<Slack text, only for done/stuck>", "session_message": {"to": "<session>", "session_id": "<id>", "text": "<message>"}}]}
 RESULTS>>>

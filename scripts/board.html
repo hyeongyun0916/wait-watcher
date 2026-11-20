@@ -224,7 +224,7 @@ function waitCard(w){
       : el("button", {class:"btn ghost", type:"button", onclick: () => {
           const t = nowIso();
           write(w.id, {status:"open", closed_at:null, errors:0, since:`${t} (다시 대기)`, reopened_at:t,
-                       session_notified:null, session_notify_error:null});
+                       session_notified:null, session_notify_error:null, session_notify_via:null});
         }}, "다시 대기");
   }
   const err = w.errors ? el("span", {class:"err"}, ` · 오류 ${w.errors}회`) : null;
@@ -238,7 +238,7 @@ function waitCard(w){
       ? el("button", {class:"link", type:"button", title:"끝나면 대기를 건 세션에 '확인해' 메시지를 보냅니다",
           onclick: () => write(w.id, {notify_session: !notifyOn})}, `끝나면 세션에 알림: ${notifyOn ? "켬" : "끔"}`)
       : `끝나면 세션에 알림: ${notifyOn ? "켬" : "끔"}`,
-    w.session_notified ? ` · 세션에 보냄 ${fmt(w.session_notified)}` : "",
+    w.session_notified ? ` · 세션에 ${w.session_notify_via === "wake" ? "깨워서 " : ""}보냄 ${fmt(w.session_notified)}` : "",
     w.session_notify_error ? el("span", {class:"err"}, ` · 세션 알림 실패: ${w.session_notify_error}`) : null);
   return el("article", {class:`card ${st}`},
     el("header", {},
