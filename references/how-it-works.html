@@ -1,0 +1,161 @@
+<title>대기 보드 구조</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column; a mermaid flow on top, then three component groups (계속 도는 것 / 저장소 / 파일) and a model table. */
+:root{
+  --bg:#f4f6f9;--card:#ffffff;--fg:#1a2129;--muted:#5d6874;--line:#d8dee6;
+  --accent:#2f63d8;--sonnet:#b0581a;--opus:#6a44c9;--none:#4c7a5a;
+  --sans:"Inter",system-ui,-apple-system,"Noto Sans KR",sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161b;--card:#1b2027;--fg:#e3e8ee;--muted:#9aa4af;--line:#2c333c;
+  --accent:#7aa2ff;--sonnet:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161b;--card:#1b2027;--fg:#e3e8ee;--muted:#9aa4af;--line:#2c333c;
+  --accent:#7aa2ff;--sonnet:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
+main{max-width:920px;margin:0 auto;display:grid;gap:28px}
+h1{font-size:26px;margin:0;text-wrap:balance}
+h2{font-size:18px;margin:0 0 10px;text-wrap:balance}
+p{margin:0}
+.sub{color:var(--muted)}
+.flow{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0;display:grid;gap:4px}
+.item b{font-family:var(--mono);font-size:13.5px;overflow-wrap:anywhere}
+.item span{color:var(--muted);font-size:14px}
+.tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.02em;padding:1px 8px;border-radius:99px;color:var(--bg);width:max-content}
+.t-sonnet{background:var(--sonnet)}.t-opus{background:var(--opus)}.t-none{background:var(--none)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
+th{color:var(--muted);font-weight:600}
+code{font-family:var(--mono);font-size:13px}
+.note{color:var(--muted);font-size:14px}
+.dia{display:block;width:100%;min-width:640px;height:auto;font-family:var(--sans)}
+.dia .node rect{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.dia .db .cyl{fill:var(--card);stroke:var(--accent);stroke-width:2}
+.dia .db .cyl-top{fill:none;stroke:var(--accent);stroke-width:2}
+.dia .nt{fill:var(--fg);font-size:14px;font-weight:600;text-anchor:middle}
+.dia .ns{fill:var(--muted);font-size:12px;text-anchor:middle}
+.dia .m-opus{fill:var(--opus);font-weight:600}.dia .m-sonnet{fill:var(--sonnet);font-weight:600}.dia .m-none{fill:var(--none);font-weight:600}
+.dia .edges path{fill:none;stroke:var(--muted);stroke-width:1.5}
+.dia .edges .dash{stroke-dasharray:5 4}
+.dia .ahead{fill:var(--muted)}
+.dia .elabel text{fill:var(--fg);font-size:12px}
+.dia .group{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:6 4}
+.dia .glabel{fill:var(--muted);font-size:12px}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap">
+
+<main>
+  <header style="display:grid;gap:6px">
+    <h1>대기 보드는 이렇게 돈다</h1>
+    <p class="sub">남을 기다리는 일을 세션이 등록하면, pod 안 루프가 10분마다 확인하고 끝나면 Slack 채널에 알린다. 원본은 대기 보드 아티팩트의 저장소 하나뿐이다.</p>
+  </header>
+
+  <section>
+    <h2>흐름</h2>
+    <div class="flow">
+<svg viewBox="0 0 780 640" role="img" aria-label="대기 보드 흐름도" class="dia">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahead"/></marker>
+  </defs>
+  <rect x="20" y="110" width="440" height="400" rx="10" class="group"/>
+  <text x="34" y="134" class="glabel">같은 pod (세션끼리 소켓으로 메시지, pod 재시작 시 모두 종료)</text>
+
+  <g class="edges">
+    <path d="M125,76 V96 H335 V146" marker-end="url(#ah)"/>
+    <path d="M210,180 H246" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M420,180 H480 V260 H526" marker-end="url(#ah)"/>
+    <path d="M125,210 V290 H526" marker-end="url(#ah)"/>
+    <path d="M645,76 V236" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M335,400 V345 H620 V318" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M420,440 H526" class="dash" marker-end="url(#ah)"/>
+    <path d="M210,420 H246" marker-end="url(#ah)"/>
+    <path d="M250,452 H214" marker-end="url(#ah)"/>
+    <path d="M125,470 V556" marker-end="url(#ah)"/>
+    <path d="M40,588 H8 V48 H36" marker-end="url(#ah)"/>
+  </g>
+  <g class="elabel">
+    <text x="230" y="90" text-anchor="middle">요청</text>
+    <text x="228" y="172" text-anchor="middle">소켓</text>
+    <text x="488" y="222">등록 · 다시 대기</text>
+    <text x="300" y="282" text-anchor="middle">직접 수정 (ArtifactData)</text>
+    <text x="653" y="160">실시간</text>
+    <text x="478" y="337" text-anchor="middle">열린 대기 읽기 · 결과 쓰기</text>
+    <text x="473" y="432" text-anchor="middle">읽기만</text>
+    <text x="228" y="412" text-anchor="middle">실행</text>
+    <text x="232" y="470" text-anchor="middle">결과</text>
+    <text x="133" y="538">알림 문장 → webhook</text>
+  </g>
+
+  <g class="node"><rect x="40" y="20" width="170" height="56" rx="8"/><text x="125" y="44" class="nt">사용자</text><text x="125" y="63" class="ns">말로 요청 · Slack으로 알림 받음</text></g>
+  <g class="node"><rect x="550" y="20" width="190" height="56" rx="8"/><text x="645" y="44" class="nt">대기 보드 페이지</text><text x="645" y="63" class="ns m-none">브라우저 · 모델 없음</text></g>
+  <g class="node"><rect x="40" y="150" width="170" height="60" rx="8"/><text x="125" y="176" class="nt">다른 대화형 세션</text><text x="125" y="196" class="ns">design-PROJ-… 등</text></g>
+  <g class="node"><rect x="250" y="150" width="170" height="60" rx="8"/><text x="335" y="176" class="nt">wait-watcher 세션</text><text x="335" y="196" class="ns m-opus">Opus · 대화형</text></g>
+  <g class="node db"><path d="M530,250 A115,10 0 0 1 760,250 V304 A115,10 0 0 1 530,304 Z" class="cyl"/><path d="M530,250 A115,10 0 0 0 760,250" class="cyl-top"/><text x="645" y="280" class="nt">Claude 아티팩트 저장소</text><text x="645" y="299" class="ns">대기 보드 db · waits · meta/*</text></g>
+  <g class="node"><rect x="40" y="400" width="170" height="70" rx="8"/><text x="125" y="428" class="nt">waits.sh loop</text><text x="125" y="450" class="ns m-none">bash · 모델 없음</text></g>
+  <g class="node"><rect x="250" y="400" width="170" height="70" rx="8"/><text x="335" y="428" class="nt">claude -p 확인 run</text><text x="335" y="450" class="ns m-sonnet">Sonnet · 10분마다</text></g>
+  <g class="node"><rect x="530" y="400" width="230" height="70" rx="8"/><text x="645" y="428" class="nt">GitHub · Jira · Confluence</text><text x="645" y="450" class="ns">Slack · Claude Docs</text></g>
+  <g class="node"><rect x="40" y="560" width="170" height="56" rx="8"/><text x="125" y="584" class="nt">Slack 채널</text><text x="125" y="603" class="ns">webhook 앱</text></g>
+  <text x="760" y="630" text-anchor="end" class="glabel">점선 상자 밖 = pod 밖 (클라우드 · 외부 서비스)</text>
+</svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>어떤 부분이 어떤 모델인가</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>부분</th><th>모델</th><th>언제 도는가</th><th>하는 일</th></tr></thead>
+      <tbody>
+        <tr><td>wait-watcher 세션</td><td><span class="tag t-opus">Opus 5.5</span></td><td>사용자가 말할 때만</td><td>세션 찾기, 대기 등록·다시 대기·질문 답변, 등록 직후 <code>waits.sh check &lt;id&gt;</code></td></tr>
+        <tr><td>다른 대화형 세션</td><td><span class="tag t-opus">그 세션 모델</span></td><td>그 세션이 필요할 때</td><td>wait-watcher에 SendMessage로 요청하거나 저장소를 직접 고침</td></tr>
+        <tr><td>확인 run (<code>claude -p</code>)</td><td><span class="tag t-sonnet">Sonnet 5.5</span></td><td>10분마다 1회, 최대 15분</td><td>열린 대기를 하나씩 읽기 전용으로 확인, 결과 기록, 24시간 지난 보관 항목 삭제, 알림 문장 작성</td></tr>
+        <tr><td><code>waits.sh</code> 루프</td><td><span class="tag t-none">모델 없음</span></td><td>항상 (pod가 살아 있는 동안)</td><td>확인 run 실행, 결과 파싱, webhook 전송, 연속 실패 18회면 경고</td></tr>
+        <tr><td>대기 보드 페이지</td><td><span class="tag t-none">모델 없음</span></td><td>열어 볼 때</td><td>저장소를 실시간 표시, 메모·취소·다시 대기·보관·할 일 추가</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note" style="margin-top:8px">하루 비용은 대부분 Sonnet 확인 run에서 나온다(약 $30/일, 열린 대기 수에 비례).</p>
+  </section>
+
+  <section>
+    <h2>계속 도는 것</h2>
+    <div class="grid">
+      <div class="item"><b>waits.sh loop</b><span>pod 안 setsid 프로세스. pid는 <code>~/waits/loop.pid</code>. pod 재시작 시 죽으며, 다시 켤 때는 <code>waits.sh start</code>.</span></div>
+      <div class="item"><b>claude -p (Sonnet)</b><span>루프가 10분마다 띄웠다가 끝나면 사라지는 일회성 프로세스. 쓰기 금지 도구 목록(<code>--disallowedTools</code>)으로 Slack 전송·gh 쓰기·git·kubectl·curl을 막는다.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>저장소 (원본)</h2>
+    <div class="grid">
+      <div class="item"><b>waits/&lt;id&gt;</b><span>대기는 <code>w…</code>, 할 일은 <code>t…</code>. 상태 open · done · stuck · cancelled, 보관 시 <code>deleted_at</code>.</span></div>
+      <div class="item"><b>meta/status</b><span>마지막 확인 시각과 "열린 대기 N · 완료 M · 오류 K".</span></div>
+      <div class="item"><b>meta/sessions</b><span>할 일 추가 칸의 세션 목록. 확인 run이 살아 있는 세션으로 맞춘다.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>필요한 파일 (<code>~/waits/</code>)</h2>
+    <div class="grid">
+      <div class="item"><b>waits.sh</b><span>check · loop · start · stop · status · notify · title.</span></div>
+      <div class="item"><b>check-prompt.md</b><span>확인 run 지시문. 종류별 확인 방법(jira, Confluence, artifact-comment, pr-comment, slack-thread, gh-run), 알림 형식.</span></div>
+      <div class="item"><b>sessions.py</b><span>"123", "pr-42" 같은 느슨한 이름을 세션 id · 이름 · UI 제목으로.</span></div>
+      <div class="item"><b>webhook.url</b><span>Slack webhook 앱 webhook. 비밀, 권한 600.</span></div>
+      <div class="item"><b>fail.count · loop.log</b><span>저장소 접근 연속 실패 수, 실행 기록.</span></div>
+      <div class="item"><b>board.html</b><span>대기 보드 페이지 원본. 이 파일로 다시 게시한다.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>스킬</h2>
+    <p>필요한 스킬은 없다. 대신 이것들을 쓴다.</p>
+    <div class="grid" style="margin-top:10px">
+      <div class="item"><b>ArtifactData</b><span>저장소 읽기·쓰기 도구. 세션과 확인 run 모두 사용.</span></div>
+      <div class="item"><b>gh · Atlassian · Slack · Claude Docs</b><span>확인 run의 읽기 전용 확인 수단.</span></div>
+      <div class="item"><b>메모리 waits-watcher.md</b><span>세션이 대기를 등록·다시 대기하는 방법을 기억하는 곳.</span></div>
+    </div>
+  </section>
+</main>

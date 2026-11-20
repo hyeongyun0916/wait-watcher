@@ -1,0 +1,4 @@
+config.env
+webhook.url
+__pycache__/
+*.log

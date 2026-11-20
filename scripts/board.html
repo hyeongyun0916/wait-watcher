@@ -1,0 +1,372 @@
+<title>대기 보드</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one column of sections (할 일, 대기 중), each a wrapping grid of cards; a slim status line on top. */
+:root{
+  --bg:#f5f6f8;--card:#ffffff;--fg:#1c2228;--muted:#646e78;--line:#dde2e7;--accent:#2f63d8;
+  --open:#2f63d8;--done:#1d8049;--cancelled:#7f8790;--stuck:#bf4a0c;--todo:#7a4fd6;--on-badge:#ffffff;
+  --font:"Pretendard","Noto Sans KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#131619;--card:#1c2026;--fg:#e4e8ec;--muted:#97a0aa;--line:#2c323a;--accent:#7aa2ff;
+  --open:#4f80f0;--done:#2f9d62;--cancelled:#6c747d;--stuck:#d9692a;--todo:#8f6ae6;--on-badge:#ffffff;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131619;--card:#1c2026;--fg:#e4e8ec;--muted:#97a0aa;--line:#2c323a;--accent:#7aa2ff;
+  --open:#4f80f0;--done:#2f9d62;--cancelled:#6c747d;--stuck:#d9692a;--todo:#8f6ae6;--on-badge:#ffffff;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+main{max-width:1800px;margin:0 auto;padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:20px;margin:0 0 2px;text-wrap:balance}
+.sub{color:var(--muted);margin:0 0 14px;font-size:12px}
+.sub .warn{color:var(--stuck)}
+h3{font-size:13px;color:var(--muted);margin:22px 0 8px;font-weight:600;letter-spacing:.02em}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:10px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  display:flex;flex-direction:column;gap:4px;min-width:0}
+.card.done,.card.cancelled{opacity:.72}
+.card header{display:flex;gap:6px;align-items:center;font-size:12px;min-width:0}
+.badge{padding:0 7px;border-radius:99px;color:var(--on-badge);font-weight:600;font-size:11px;flex:none}
+.badge.open{background:var(--open)}.badge.done{background:var(--done)}.badge.cancelled{background:var(--cancelled)}
+.badge.stuck{background:var(--stuck)}.badge.todo{background:var(--todo)}
+.session{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.id{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:11px;flex:none}
+.card h2{font-size:15px;margin:2px 0 0;line-height:1.35;overflow-wrap:anywhere}
+.card h2 a{color:inherit;text-decoration:none}.card h2 a:hover{color:var(--accent);text-decoration:underline}
+.meta,.check{margin:0;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.check{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.check b{color:var(--fg);font-weight:600}.err{color:var(--stuck)}
+details{font-size:12px;color:var(--muted)}summary{cursor:pointer;width:max-content}
+details p{margin:4px 0 0;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere}
+.memos{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.memos li{background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:5px 8px}
+.mhead{display:flex;align-items:center;gap:8px}
+.mhead time{font-size:11px;color:var(--muted)}
+.mact{display:flex;gap:8px;margin-left:auto}
+.mtext{margin:2px 0 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.link{font:inherit;font-size:11px;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
+.link:hover{color:var(--accent)}.link.danger:hover,.link.armed{color:var(--stuck)}
+.row{display:flex;gap:6px;align-items:flex-start;margin-top:4px}
+textarea,input[type=text]{flex:1;min-width:0;font:inherit;font-size:13px;padding:4px 7px;border:1px solid var(--line);
+  border-radius:6px;background:var(--bg);color:var(--fg)}
+textarea{resize:vertical;field-sizing:content;min-height:28px}
+.btns{display:flex;gap:4px;flex:none}
+button.btn{font:inherit;font-size:12px;padding:4px 9px;border-radius:6px;border:1px solid var(--accent);
+  background:var(--accent);color:var(--on-badge);cursor:pointer;white-space:nowrap}
+button.btn.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+button.btn.armed{background:var(--stuck);border-color:var(--stuck);color:var(--on-badge)}
+button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.x{background:none;border:0;padding:0 2px;font-size:17px;line-height:1;color:var(--muted);cursor:pointer;flex:none}
+.x:hover,.x.armed{color:var(--stuck)}
+.x.armed{font-size:12px;font-weight:600}
+.addtodo{display:flex;gap:6px;margin:0 0 10px;max-width:960px;flex-wrap:wrap}
+.addtodo input{background:var(--card);padding:5px 8px}
+.addtodo .t{flex:2 1 260px}.addtodo .s,.addtodo .u{flex:1 1 180px}
+.empty{color:var(--muted);margin:0}
+.card.todo.done h2{text-decoration:line-through}
+.hint{font-size:11px;color:var(--muted)}
+.archive{margin-top:28px;color:var(--muted, inherit)}
+.archive summary{cursor:pointer;font-weight:600}
+.archive ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
+.archive li{overflow-wrap:anywhere}
+</style>
+
+<main>
+  <h1>대기 보드</h1>
+  <p class="sub" id="status">불러오는 중…</p>
+
+  <h3 id="inbox-h">할 일</h3>
+  <form class="addtodo" id="addtodo">
+    <input type="text" class="t" id="todo-title" placeholder="새 할 일" required>
+    <input type="text" class="s" id="todo-session" list="session-list" placeholder="세션 (선택)" autocomplete="off">
+    <datalist id="session-list"></datalist>
+    <input type="text" class="u" id="todo-url" placeholder="링크 (선택)">
+    <button class="btn" type="submit">추가</button>
+  </form>
+  <div id="inbox"><p class="empty">대기와 할 일은 확인 루프가 이 보드의 저장소에 기록합니다. 끝난 대기와 할 일이 여기에 모입니다.</p></div>
+
+  <h3 id="open-h">대기 중</h3>
+  <div id="open"><p class="empty">기다리는 항목이 아직 없습니다.</p></div>
+
+  <details id="archive" class="archive" hidden>
+    <summary id="archive-s">보관함</summary>
+    <ul id="archive-list"></ul>
+  </details>
+</main>
+
+<script>
+const STATUS = {open:"대기 중", done:"완료", cancelled:"취소", stuck:"확인 실패"};
+const state = {docs: new Map(), meta: null, sessions: [], loaded: false, timedOut: false, canWrite: true, error: null};
+
+function fillSessions(){
+  const dl = document.getElementById("session-list");
+  dl.replaceChildren(...state.sessions.filter(s => s.title || s.name)
+    .map(s => el("option", {value: s.title || s.name}, s.name && s.name !== s.title ? s.name : "")));
+}
+let db = null;
+
+const pad = n => String(n).padStart(2, "0");
+function nowIso(){
+  const d = new Date(), off = -d.getTimezoneOffset(), s = off >= 0 ? "+" : "-";
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${s}${pad(Math.floor(Math.abs(off)/60))}:${pad(Math.abs(off)%60)}`;
+}
+function fmt(s){
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d)) return String(s);
+  return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function el(tag, attrs = {}, ...kids){
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)){
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k instanceof Node ? k : String(k));
+  return n;
+}
+const isHttp = u => typeof u === "string" && /^https?:\/\//.test(u);
+
+/* Two-step confirm: first click arms the button, a second click within 4 s runs the action. */
+function armed(btn, armedLabel, run){
+  const label = btn.textContent;
+  btn.addEventListener("click", ev => {
+    ev.preventDefault();
+    if (btn.dataset.armed){ run(); return; }
+    btn.dataset.armed = "1"; btn.classList.add("armed"); btn.textContent = armedLabel;
+    setTimeout(() => { delete btn.dataset.armed; btn.classList.remove("armed"); btn.textContent = label; }, 4000);
+  });
+  return btn;
+}
+
+async function write(id, fields){
+  if (!db) return;
+  try { await db.collection("waits").doc(id).update(fields); }
+  catch (e){ report(e); }
+}
+/* × archives instead of deleting: the doc keeps everything plus deleted_at, and the check run purges it
+   once ARCHIVE_TTL_H hours have passed. Restoring sets deleted_at back to null. */
+const ARCHIVE_TTL_H = 24;
+function archive(id){ return write(id, {deleted_at: nowIso()}); }
+function restore(id){ return write(id, {deleted_at: null}); }
+function report(e){
+  if (e && e.code === "invalid_argument"){ state.canWrite = false; state.error = "이 보드를 고칠 권한이 없어 읽기만 할 수 있습니다."; }
+  else state.error = "저장하지 못했습니다. 잠시 뒤 다시 해 보세요.";
+  render();
+}
+
+function memoList(w){
+  const memos = Array.isArray(w.memos) ? w.memos : [];
+  if (!memos.length) return null;
+  return el("ul", {class:"memos"}, memos.map(m => {
+    const li = el("li");
+    const text = el("p", {class:"mtext"}, m.text || "");
+    const edited = m.edited_at ? ` · 수정 ${fmt(m.edited_at)}` : "";
+    const head = el("div", {class:"mhead"}, el("time", {}, fmt(m.at) + edited));
+    if (state.canWrite){
+      const editBtn = el("button", {class:"link", type:"button"}, "수정");
+      const delBtn = armed(el("button", {class:"link danger", type:"button"}, "삭제"), "삭제할까요?",
+        () => write(w.id, {memos: memos.filter(x => x.mid !== m.mid)}));
+      head.append(el("span", {class:"mact"}, editBtn, delBtn));
+      editBtn.addEventListener("click", () => {
+        const ta = el("textarea", {rows:"2", "aria-label":"메모 수정"});
+        ta.value = m.text || "";
+        const form = el("form", {class:"row", onsubmit: ev => {
+          ev.preventDefault();
+          const t = ta.value.trim();
+          const next = t ? memos.map(x => x.mid === m.mid ? {...x, text:t, edited_at: nowIso()} : x)
+                         : memos.filter(x => x.mid !== m.mid);
+          write(w.id, {memos: next});
+        }}, ta, el("div", {class:"btns"},
+          el("button", {class:"btn", type:"submit"}, "저장"),
+          el("button", {class:"btn ghost", type:"button", onclick: () => form.replaceWith(text)}, "취소")));
+        text.replaceWith(form); ta.focus();
+      });
+    }
+    li.append(head, text);
+    return li;
+  }));
+}
+
+function memoForm(w, extra){
+  if (!state.canWrite) return null;
+  const ta = el("textarea", {rows:"1", placeholder:"새 메모", "aria-label":"새 메모", id:`memo-${w.id}`});
+  return el("form", {class:"row", onsubmit: ev => {
+    ev.preventDefault();
+    const t = ta.value.trim();
+    if (!t) return;
+    const memos = (Array.isArray(w.memos) ? w.memos : []).concat({mid: crypto.randomUUID().slice(0,8), at: nowIso(), text: t});
+    ta.value = "";
+    write(w.id, {memos});
+  }}, ta, el("div", {class:"btns"}, el("button", {class:"btn", type:"submit"}, "메모 추가"), extra));
+}
+
+function delX(w, what){
+  if (!state.canWrite) return null;
+  return armed(el("button", {class:"x", type:"button", title:`보관함으로 (${ARCHIVE_TTL_H}시간 뒤 삭제)`, "aria-label":`${what} 보관`}, "×"),
+    "보관?", () => archive(w.id));
+}
+
+function titleNode(w){
+  return isHttp(w.url) ? el("a", {href:w.url, target:"_blank", rel:"noopener"}, w.title || w.id) : (w.title || w.id);
+}
+
+function waitCard(w){
+  const st = w.status || "open";
+  let action = null;
+  if (state.canWrite){
+    action = st === "open"
+      ? armed(el("button", {class:"btn ghost", type:"button"}, "대기 취소"), "취소할까요?",
+          () => write(w.id, {status:"cancelled", closed_at: nowIso()}))
+      : el("button", {class:"btn ghost", type:"button", onclick: () => {
+          const t = nowIso();
+          write(w.id, {status:"open", closed_at:null, errors:0, since:`${t} (다시 대기)`, reopened_at:t,
+                       session_notified:null, session_notify_error:null});
+        }}, "다시 대기");
+  }
+  const err = w.errors ? el("span", {class:"err"}, ` · 오류 ${w.errors}회`) : null;
+  const meta = [w.requester || "—", `등록 ${fmt(w.created_at)}`];
+  if (w.deadline) meta.push(`마감 ${w.deadline}`);
+  if (w.closed_at) meta.push(`종료 ${fmt(w.closed_at)}`);
+  /* notify_session missing means on: the check run tells the waiting session when the wait is done. */
+  const notifyOn = w.notify_session !== false;
+  const notifyLine = el("p", {class:"meta"},
+    state.canWrite
+      ? el("button", {class:"link", type:"button", title:"끝나면 대기를 건 세션에 '확인해' 메시지를 보냅니다",
+          onclick: () => write(w.id, {notify_session: !notifyOn})}, `끝나면 세션에 알림: ${notifyOn ? "켬" : "끔"}`)
+      : `끝나면 세션에 알림: ${notifyOn ? "켬" : "끔"}`,
+    w.session_notified ? ` · 세션에 보냄 ${fmt(w.session_notified)}` : "",
+    w.session_notify_error ? el("span", {class:"err"}, ` · 세션 알림 실패: ${w.session_notify_error}`) : null);
+  return el("article", {class:`card ${st}`},
+    el("header", {},
+      el("span", {class:`badge ${st}`}, STATUS[st] || st),
+      el("span", {class:"session", title: w.session || ""}, w.session_title || w.session || "세션 없음"),
+      el("span", {class:"id"}, w.id),
+      st === "open" ? null : delX(w, "대기")),
+    el("h2", {}, titleNode(w)),
+    el("p", {class:"meta"}, meta.join(" · ")),
+    notifyLine,
+    el("p", {class:"check", title: w.last_detail || ""}, el("b", {}, fmt(w.last_checked) || "아직 확인 전"), err, " ", w.last_detail || ""),
+    w.done_when ? el("details", {}, el("summary", {}, "완료 조건"), el("p", {}, w.done_when)) : null,
+    memoList(w),
+    memoForm(w, action));
+}
+
+function todoCard(w){
+  const st = w.status || "open";
+  const session = w.session_title || w.session || w.session_hint || "";
+  const meta = [`등록 ${fmt(w.created_at)}`];
+  if (w.session_hint && !w.session_id) meta.push("세션 연결 대기");
+  return el("article", {class:`card todo ${st}`},
+    el("header", {},
+      el("span", {class:"badge todo"}, "할 일"),
+      el("span", {class:"session"}, session),
+      el("span", {class:"id"}, w.id),
+      delX(w, "할 일")),
+    el("h2", {}, titleNode(w)),
+    el("p", {class:"meta"}, meta.join(" · ")),
+    memoList(w),
+    memoForm(w, null));
+}
+
+function archivedCard(w){
+  const left = Math.max(0, ARCHIVE_TTL_H - (Date.now() - new Date(w.deleted_at)) / 3600e3);
+  return el("li", {},
+    el("span", {class:"id"}, w.id), " ",
+    w.kind === "todo" ? "할 일 · " : "", titleNode(w),
+    el("span", {class:"meta"}, ` · 보관 ${fmt(w.deleted_at)} · ${Math.ceil(left)}시간 뒤 삭제 `),
+    state.canWrite ? el("button", {class:"link", type:"button", onclick: () => restore(w.id)}, "복구") : null);
+}
+
+function render(){
+  const everything = [...state.docs.values()];
+  const archived = everything.filter(w => w.deleted_at)
+    .sort((a,b) => String(b.deleted_at).localeCompare(String(a.deleted_at)));
+  const all = everything.filter(w => !w.deleted_at);
+  const todos = all.filter(w => w.kind === "todo");
+  const waits = all.filter(w => w.kind !== "todo");
+  const order = {open:0, stuck:1};
+  const open = waits.filter(w => ["open","stuck"].includes(w.status || "open"))
+    .sort((a,b) => (order[a.status||"open"] - order[b.status||"open"]) || String(a.created_at||"").localeCompare(String(b.created_at||"")));
+  const closed = waits.filter(w => !["open","stuck"].includes(w.status || "open"));
+  const inbox = closed.concat(todos.filter(w => (w.status || "open") === "open"))
+    .sort((a,b) => String(b.closed_at || b.created_at || "").localeCompare(String(a.closed_at || a.created_at || "")));
+
+  document.getElementById("inbox-h").textContent = `할 일 (${inbox.length})`;
+  document.getElementById("open-h").textContent = `대기 중 (${open.length})`;
+  document.getElementById("addtodo").hidden = !state.canWrite || !db;
+
+  const fill = (id, list, mk, emptyText) => {
+    const box = document.getElementById(id);
+    if (!state.loaded) return;
+    box.replaceChildren(list.length ? el("div", {class:"grid"}, list.map(mk)) : el("p", {class:"empty"}, emptyText));
+  };
+  fill("inbox", inbox, w => w.kind === "todo" ? todoCard(w) : waitCard(w), "할 일이 없습니다.");
+  fill("open", open, waitCard, "기다리는 항목이 없습니다.");
+  const arc = document.getElementById("archive");
+  arc.hidden = !archived.length;
+  document.getElementById("archive-s").textContent = `보관함 (${archived.length}) — ${ARCHIVE_TTL_H}시간 뒤 자동 삭제`;
+  document.getElementById("archive-list").replaceChildren(...archived.map(archivedCard));
+
+  const st = document.getElementById("status");
+  const parts = [];
+  if (!db) parts.push(state.loaded ? "" : "저장소에 연결할 수 없습니다. 로그인한 상태에서 열어 주세요.");
+  else if (!state.loaded) parts.push(state.timedOut ? "저장소 응답이 늦습니다. 연결되면 바로 채워집니다." : "불러오는 중…");
+  const m = state.meta;
+  if (m){
+    parts.push(`마지막 확인 ${fmt(m.last_run)}${m.summary ? ` · ${m.summary}` : ""}`);
+  }
+  parts.push("10분마다 확인 · 완료 시 Slack 알림");
+  st.replaceChildren(...parts.filter(Boolean).flatMap((p, i) => i ? [" · ", p] : [p]));
+  if (m && m.failures) st.append(" · ", el("span", {class:"warn"}, `확인 run 연속 실패 ${m.failures}회`));
+  if (state.error) st.append(" · ", el("span", {class:"warn"}, state.error));
+}
+
+document.getElementById("addtodo").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (!db) return;
+  const title = document.getElementById("todo-title").value.trim();
+  if (!title) return;
+  const session = document.getElementById("todo-session").value.trim();
+  const url = document.getElementById("todo-url").value.trim();
+  const d = new Date();
+  const id = `t${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${Math.floor(Math.random()*100).toString().padStart(2,"0")}`;
+  const doc = {id, kind:"todo", title, status:"open", created_at: nowIso()};
+  if (session){
+    const hit = state.sessions.find(s => s.title === session || s.name === session || s.session_id === session);
+    if (hit) Object.assign(doc, {session_id: hit.session_id, session: hit.name || hit.session_id, session_title: hit.title || hit.name});
+    else doc.session_hint = session;
+  }
+  if (isHttp(url)) doc.url = url;
+  try {
+    await db.collection("waits").doc(id).set(doc);
+    ev.target.reset();
+  } catch (e){ report(e); }
+});
+
+render();
+(async () => {
+  db = await claude.use("db");
+  if (!db){ state.loaded = true; render(); return; }
+  try {
+    const user = await claude.use("user");
+    if (user && (await user.can("data.write")) === false) state.canWrite = false;
+  } catch {}
+  const timer = setTimeout(() => { state.timedOut = true; render(); }, 10000);
+  db.collection("waits").onSnapshot(snap => {
+    state.docs = new Map(snap.docs.map(d => [d.id, {...d.data(), id: d.id}]));
+    if (!snap.metadata.fromCache){ state.loaded = true; clearTimeout(timer); }
+    else if (snap.size) state.loaded = true;
+    render();
+  }, e => { clearTimeout(timer); state.loaded = true; state.error = "저장소 연결이 끊겼습니다. 페이지를 다시 열어 주세요."; render(); });
+  db.doc("meta/status").onSnapshot(s => { state.meta = s.exists ? s.data() : null; render(); }, () => {});
+  db.doc("meta/sessions").onSnapshot(s => {
+    const list = s.exists ? s.data().list : null;
+    state.sessions = Array.isArray(list) ? list : [];
+    fillSessions();
+  }, () => {});
+})();
+</script>
