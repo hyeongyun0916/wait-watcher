@@ -13,7 +13,7 @@ on ART_URL only, collection `waits`, one document per entry (doc id = entry id).
 1. Read: `ArtifactData action=query collection=waits query={"where":[["status","in",["open","pending"]]],"limit":1000}`.
    Other sessions sometimes write the invalid status "pending": treat it as "open" and include `status` "open" in
    that document's update.
-   Each document carries a `version`; keep it. If ONLY_ID is given, handle only that document.
+   Each document carries a `version`; keep it. If ONLY_IDS is given (MODE targeted), handle only those documents.
    Documents with `kind` "todo" are never checked (see Sessions below for the one thing to do with them).
    Documents with a non-null `deleted_at` are archived (the user pressed × on the board): never check or update them.
 2. Check each open wait (kind != todo) as described under "How to check".
@@ -27,6 +27,8 @@ on ART_URL only, collection `waits`, one document per entry (doc id = entry id).
    If a pinned write fails because the document changed (the user edited it on the page), re-read that one
    document and redo the write on the new version; keep the user's fields (memos, status they set). If the user
    meanwhile closed or cancelled it, write only `last_checked`/`last_detail`.
+MODE full only — skip steps 4 to 6 and the Sessions section in a targeted run:
+
 4. Update `meta/status` (collection `meta`, doc id `status`): get it first (create without if_version if absent),
    then set `{last_run: CHECKED_AT, summary: "<열린 대기 N · 이번 완료 M · 오류 K>", failures: 0}`.
 
@@ -43,18 +45,32 @@ fields below.
 
 ## Sessions
 
-SESSIONS below maps live Claude session ids to their current messaging name and UI title. Users rename
-sessions, and the board must show the current names on every document, open or closed. In step 6's listing,
-for every document without `deleted_at` that has a `session_id`:
-- id in SESSIONS: if `session` or `session_title` differs from the map, update both (`session` = name,
-  `session_title` = title).
-- id not in SESSIONS (not running): run `/usr/bin/python3 -I SESSIONS_PY "<session_id>"` once per distinct id
-  (prints JSON {session_id, name, title}); where `title` is non-null and differs from `session_title`, update
-  `session_title` only.
-Pin each update with the version from the listing and batch them; skip a document on a version conflict.
+SESSIONS below maps live Claude session ids to their current messaging name, UI title and working directory (`cwd`).
+The script keeps `session`, `session_title` and `session_cwd` current on documents that have a `session_id`, after
+every full check; do not compare or update them yourself.
 - For an open todo with `session_hint` and no `session_id`: resolve it with
   `/usr/bin/python3 -I SESSIONS_PY "<session_hint>"`; if session_id is non-null, update the todo with
-  `session_id`, `session`, `session_title`. Otherwise leave it.
+  `session_id`, `session`, `session_title`, `session_cwd`. Otherwise leave it.
+
+## Probes
+
+The script re-checks a wait between full runs only when one of its probes changes, so every pending or error
+result must carry `probes` (and `recheck_at` when time matters). A probe is data, not a command:
+- `{"gh": "repos/<owner>/<repo>/...", "jq": "<jq filter>"}` — the script runs `gh api <path> --jq <filter>` (GET).
+  The path matches `^repos/[A-Za-z0-9._/-]+(\?[A-Za-z0-9_=&.-]+)?$`.
+- `{"file": "/absolute/path"}` — the script compares the file's size and mtime (or its absence).
+Pick probes whose output changes when the wait might be done, and that do not change otherwise:
+- `pr-comment`: `{"gh": "repos/<repo>/pulls/<n>", "jq": "[.state,.merged,.head.sha,.updated_at]|tostring"}`
+  (updated_at moves on new comments, reviews and pushes); add
+  `{"gh": "repos/<repo>/issues/comments/<id>", "jq": ".reactions|tostring"}` when a reaction counts.
+- `gh-run`: `{"gh": "repos/<repo>/actions/runs/<id>", "jq": "[.status,.conclusion]|tostring"}`.
+- `other` on local files: the file whose appearance or change means done — never a log that grows while
+  waiting.
+- Jira, Slack, Confluence and artifact waits have no probe: `"probes": []`; full runs cover them.
+`active_since`: the document's `reopened_at`, else its `created_at`, copied as is (the script checks a wait
+without probes every tick for a day after it, and hourly after that).
+`recheck_at` (ISO 8601 with offset, or null): when the wait must be looked at again regardless of probes — a
+`deadline`, or a time-based stuck rule in `done_when` (e.g. "21:00이 지나도 결과가 없으면 stuck").
 
 ## How to check, by kind
 
@@ -77,6 +93,19 @@ Pin each update with the version from the listing and batch them; skip a documen
 - `gh-run`: `gh run view <id> -R <repo> --json status,conclusion,jobs`. Done when completed; report the
   conclusion and failed job names.
 - `other`: use whatever read-only tool fits `url`, `target` and `done_when` (local files: tail/grep/python3 only).
+
+**Every end state ends the wait.** The user waits for the thing to stop being in progress, not only for the
+happy outcome, and a wait left pending after its subject ended is never noticed. Mark it done, and say which end
+state it reached in `detail` and `notify`, whenever the subject can no longer reach what `done_when` names, even
+if `done_when` lists only the happy path:
+- a run or job: completed with any conclusion (success, failure, cancelled, timed_out, skipped,
+  startup_failure), or deleted;
+- a PR: merged, closed without merging, or converted to draft when the wait was for review or approval;
+- an issue or ticket: closed, resolved, Done, Won't Do or cancelled without the awaited reply;
+- a thread, comment or page: deleted, or the asker withdrew the question;
+- a target that no longer exists or that you can no longer read for a reason that will not go away (404,
+  access removed): `stuck`, with the reason.
+A failure conclusion is news, so the notification leads with it (e.g. `❌ failure — job conformance`).
 
 If an entry has `deadline` (ISO date) and it has passed with nothing changed, notify
   `[대기 종료] <session_title or session> 세션: <title> — <deadline>까지 변화 없음` and mark it done.
@@ -114,5 +143,5 @@ Finish with this block and nothing after it. `db_ok` is false if you could not r
 write results for the waits you checked.
 
 <<<RESULTS
-{"db_ok": true, "results": [{"id": "<id>", "status": "done|pending|error|stuck", "detail": "<what you saw>", "notify": "<Slack text, only for done/stuck>", "session_message": {"to": "<session>", "session_id": "<id>", "text": "<message>"}}]}
+{"db_ok": true, "results": [{"id": "<id>", "status": "done|pending|error|stuck", "detail": "<what you saw>", "notify": "<Slack text, only for done/stuck>", "session_message": {"to": "<session>", "session_id": "<id>", "text": "<message>"}, "probes": [<pending/error only>], "active_since": "<reopened_at or created_at>", "recheck_at": "<ISO or null>"}]}
 RESULTS>>>

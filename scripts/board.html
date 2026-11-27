@@ -248,6 +248,7 @@ function waitCard(w){
       st === "open" ? null : delX(w, "대기")),
     el("h2", {}, titleNode(w)),
     el("p", {class:"meta"}, meta.join(" · ")),
+    w.session_cwd ? el("p", {class:"meta", title: w.session_cwd}, `경로 ${w.session_cwd}`) : null,
     notifyLine,
     el("p", {class:"check", title: w.last_detail || ""}, el("b", {}, fmt(w.last_checked) || "아직 확인 전"), err, " ", w.last_detail || ""),
     w.done_when ? el("details", {}, el("summary", {}, "완료 조건"), el("p", {}, w.done_when)) : null,
@@ -268,6 +269,7 @@ function todoCard(w){
       delX(w, "할 일")),
     el("h2", {}, titleNode(w)),
     el("p", {class:"meta"}, meta.join(" · ")),
+    w.session_cwd ? el("p", {class:"meta", title: w.session_cwd}, `경로 ${w.session_cwd}`) : null,
     memoList(w),
     memoForm(w, null));
 }
@@ -317,9 +319,9 @@ function render(){
   else if (!state.loaded) parts.push(state.timedOut ? "저장소 응답이 늦습니다. 연결되면 바로 채워집니다." : "불러오는 중…");
   const m = state.meta;
   if (m){
-    parts.push(`마지막 확인 ${fmt(m.last_run)}${m.summary ? ` · ${m.summary}` : ""}`);
+    parts.push(`마지막 전체 확인 ${fmt(m.last_run)}${m.summary ? ` · ${m.summary}` : ""}`);
   }
-  parts.push("10분마다 확인 · 완료 시 Slack 알림");
+  parts.push("20분마다 변화 감지 · 1시간마다 전체 확인 · 완료 시 Slack 알림");
   st.replaceChildren(...parts.filter(Boolean).flatMap((p, i) => i ? [" · ", p] : [p]));
   if (m && m.failures) st.append(" · ", el("span", {class:"warn"}, `확인 run 연속 실패 ${m.failures}회`));
   if (state.error) st.append(" · ", el("span", {class:"warn"}, state.error));
