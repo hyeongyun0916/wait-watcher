@@ -4,15 +4,15 @@
 /* Layout: one reading column; an inline SVG flow on top, then a model table and component groups. */
 :root{
   --bg:#f4f6f9;--card:#ffffff;--fg:#1a2129;--muted:#5d6874;--line:#d8dee6;
-  --accent:#2f63d8;--sonnet:#b0581a;--opus:#6a44c9;--none:#4c7a5a;
+  --accent:#2f63d8;--haiku:#b0581a;--opus:#6a44c9;--none:#4c7a5a;
   --sans:"Inter",system-ui,-apple-system,"Noto Sans KR",sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12161b;--card:#1b2027;--fg:#e3e8ee;--muted:#9aa4af;--line:#2c333c;
-  --accent:#7aa2ff;--sonnet:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}}
+  --accent:#7aa2ff;--haiku:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12161b;--card:#1b2027;--fg:#e3e8ee;--muted:#9aa4af;--line:#2c333c;
-  --accent:#7aa2ff;--sonnet:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}
+  --accent:#7aa2ff;--haiku:#e08a4b;--opus:#a88cf0;--none:#7fb08d;color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--sans);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 48px}
 main{max-width:920px;margin:0 auto;display:grid;gap:28px}
@@ -26,7 +26,7 @@ p{margin:0}
 .item b{font-family:var(--mono);font-size:13.5px;overflow-wrap:anywhere}
 .item span{color:var(--muted);font-size:14px}
 .tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.02em;padding:1px 8px;border-radius:99px;color:var(--bg);width:max-content}
-.t-sonnet{background:var(--sonnet)}.t-opus{background:var(--opus)}.t-none{background:var(--none)}
+.t-haiku{background:var(--haiku)}.t-opus{background:var(--opus)}.t-none{background:var(--none)}
 .tbl{overflow-x:auto}
 table{border-collapse:collapse;width:100%;min-width:560px;background:var(--card);border:1px solid var(--line);border-radius:8px}
 th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top;font-size:14px}
@@ -39,11 +39,11 @@ code{font-family:var(--mono);font-size:13px}
 .dia .db .cyl-top{fill:none;stroke:var(--accent);stroke-width:2}
 .dia .nt{fill:var(--fg);font-size:14px;font-weight:600;text-anchor:middle}
 .dia .ns{fill:var(--muted);font-size:12px;text-anchor:middle}
-.dia .m-opus{fill:var(--opus);font-weight:600}.dia .m-sonnet{fill:var(--sonnet);font-weight:600}.dia .m-none{fill:var(--none);font-weight:600}
+.dia .m-opus{fill:var(--opus);font-weight:600}.dia .m-haiku{fill:var(--haiku);font-weight:600}.dia .m-none{fill:var(--none);font-weight:600}
 .dia .edges path{fill:none;stroke:var(--muted);stroke-width:1.5}
 .dia .edges .dash{stroke-dasharray:5 4}
-.dia .edges .notify{stroke:var(--sonnet);stroke-width:1.8}
-.dia .elabel .nlabel{fill:var(--sonnet);font-weight:600}
+.dia .edges .notify{stroke:var(--haiku);stroke-width:1.8}
+.dia .elabel .nlabel{fill:var(--haiku);font-weight:600}
 .dia .ahead{fill:var(--muted)}
 .dia .elabel text{fill:var(--fg);font-size:12px}
 .dia .group{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:6 4}
@@ -54,61 +54,68 @@ code{font-family:var(--mono);font-size:13px}
 <main>
   <header style="display:grid;gap:6px">
     <h1>How waits-watcher works</h1>
-    <p class="sub">A Claude session registers something you are waiting on. A loop on the same machine checks every open wait every 10 minutes, posts to Slack when one is done, and tells the session that registered it. The only store is the board artifact's database.</p>
+    <p class="sub">A Claude session registers something you are waiting on. A loop on the same machine runs cheap probes every 20 minutes, hands Claude only the waits whose probe changed (and every open wait once an hour), posts to Slack when one is done, and tells the session that registered it. The only store is the board artifact's database.</p>
   </header>
 
   <section>
     <h2>Flow</h2>
     <div class="flow">
-<svg viewBox="0 0 780 640" role="img" aria-label="waits-watcher flow" class="dia">
+<svg viewBox="0 0 800 680" role="img" aria-label="waits-watcher flow" class="dia">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahead"/></marker>
   </defs>
-  <rect x="20" y="110" width="440" height="400" rx="10" class="group"/>
-  <text x="34" y="134" class="glabel">Same machine (sessions message each other over local sockets)</text>
+  <rect x="20" y="110" width="480" height="540" rx="10" class="group"/>
+  <text x="34" y="132" class="glabel">Same machine · local sockets</text>
 
   <g class="edges">
-    <path d="M125,76 V96 H335 V146" marker-end="url(#ah)"/>
-    <path d="M210,180 H246" marker-start="url(#ah)" marker-end="url(#ah)"/>
-    <path d="M420,180 H480 V260 H526" marker-end="url(#ah)"/>
-    <path d="M125,210 V290 H526" marker-end="url(#ah)"/>
-    <path d="M645,76 V236" marker-start="url(#ah)" marker-end="url(#ah)"/>
-    <path d="M335,400 V345 H620 V318" marker-start="url(#ah)" marker-end="url(#ah)"/>
-    <path d="M280,400 V214" class="notify" marker-end="url(#ah)"/>
-    <path d="M280,240 H180 V214" class="notify" marker-end="url(#ah)"/>
-    <path d="M420,440 H526" class="dash" marker-end="url(#ah)"/>
-    <path d="M210,420 H246" marker-end="url(#ah)"/>
-    <path d="M250,452 H214" marker-end="url(#ah)"/>
-    <path d="M125,470 V556" marker-end="url(#ah)"/>
-    <path d="M40,588 H8 V48 H36" marker-end="url(#ah)"/>
+    <path d="M125,76 V96 H385 V146" marker-end="url(#ah)"/>
+    <path d="M210,180 H286" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M480,180 H566" marker-end="url(#ah)"/>
+    <path d="M665,76 V146" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M480,335 H566" class="dash" marker-end="url(#ah)"/>
+    <path d="M365,380 V426" marker-end="url(#ah)"/>
+    <path d="M405,430 V384" marker-end="url(#ah)"/>
+    <path d="M480,470 H780 V180 H764" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path d="M480,445 H640 V374" class="dash" marker-end="url(#ah)"/>
+    <path d="M290,360 H160 V426" marker-end="url(#ah)"/>
+    <path d="M80,430 V214" class="notify" marker-end="url(#ah)"/>
+    <path d="M80,240 H385 V214" class="notify" marker-end="url(#ah)"/>
+    <path d="M125,500 V556" class="notify" marker-end="url(#ah)"/>
+    <path d="M385,500 V588 H566" marker-end="url(#ah)"/>
   </g>
   <g class="elabel">
-    <text x="230" y="90" text-anchor="middle">asks</text>
-    <text x="228" y="172" text-anchor="middle">socket</text>
-    <text x="488" y="222">register · reset</text>
-    <text x="300" y="282" text-anchor="middle">edit directly (ArtifactData)</text>
-    <text x="653" y="160">live</text>
-    <text x="478" y="337" text-anchor="middle">read open waits · write results</text>
-    <text x="473" y="432" text-anchor="middle">read only</text>
-    <text x="272" y="366" text-anchor="end" class="nlabel">when done: tell the</text>
-    <text x="272" y="382" text-anchor="end" class="nlabel">waiting session to check</text>
-    <text x="228" y="412" text-anchor="middle">runs</text>
-    <text x="232" y="470" text-anchor="middle">results</text>
-    <text x="133" y="538">notify text → webhook</text>
+    <text x="250" y="90" text-anchor="middle">asks</text>
+    <text x="248" y="172" text-anchor="middle">socket</text>
+    <text x="523" y="172" text-anchor="middle">register</text>
+    <text x="673" y="115">live</text>
+    <text x="523" y="313" text-anchor="middle">probes</text>
+    <text x="523" y="327" text-anchor="middle">gh GET</text>
+    <text x="357" y="408" text-anchor="end">changed ids</text>
+    <text x="413" y="408">results</text>
+    <text x="640" y="490" text-anchor="middle">read open waits · write results</text>
+    <text x="560" y="438" text-anchor="middle">read only</text>
+    <text x="225" y="352" text-anchor="middle">finished</text>
+    <text x="88" y="300" class="nlabel">running:</text>
+    <text x="88" y="316" class="nlabel">SendMessage</text>
+    <text x="133" y="534" class="nlabel">not running</text>
+    <text x="478" y="580" text-anchor="middle">Slack text → webhook</text>
   </g>
 
-  <g class="node"><rect x="40" y="20" width="170" height="56" rx="8"/><text x="125" y="44" class="nt">You</text><text x="125" y="63" class="ns">ask in words · get Slack posts</text></g>
-  <g class="node"><rect x="550" y="20" width="190" height="56" rx="8"/><text x="645" y="44" class="nt">Board page</text><text x="645" y="63" class="ns m-none">browser · no model</text></g>
+  <g class="node"><rect x="40" y="20" width="170" height="56" rx="8"/><text x="125" y="44" class="nt">You</text><text x="125" y="63" class="ns">asks · gets Slack posts</text></g>
+  <g class="node"><rect x="570" y="20" width="190" height="56" rx="8"/><text x="665" y="44" class="nt">Board page</text><text x="665" y="63" class="ns m-none">browser · no model</text></g>
   <g class="node"><rect x="40" y="150" width="170" height="60" rx="8"/><text x="125" y="176" class="nt">Other sessions</text><text x="125" y="196" class="ns">any interactive session</text></g>
-  <g class="node"><rect x="250" y="150" width="170" height="60" rx="8"/><text x="335" y="176" class="nt">Your session</text><text x="335" y="196" class="ns m-opus">interactive · its model</text></g>
-  <g class="node db"><path d="M530,250 A115,10 0 0 1 760,250 V304 A115,10 0 0 1 530,304 Z" class="cyl"/><path d="M530,250 A115,10 0 0 0 760,250" class="cyl-top"/><text x="645" y="280" class="nt">Claude artifact database</text><text x="645" y="299" class="ns">waits · meta/status · meta/sessions</text></g>
-  <g class="node"><rect x="40" y="400" width="170" height="70" rx="8"/><text x="125" y="428" class="nt">waits.sh loop</text><text x="125" y="450" class="ns m-none">bash · no model</text></g>
-  <g class="node"><rect x="250" y="400" width="170" height="70" rx="8"/><text x="335" y="428" class="nt">claude -p check run</text><text x="335" y="450" class="ns m-sonnet">Sonnet · every 10 min</text></g>
-  <g class="node"><rect x="530" y="400" width="230" height="70" rx="8"/><text x="645" y="428" class="nt">GitHub · Jira · Confluence</text><text x="645" y="450" class="ns">Slack · Claude Docs</text></g>
-  <g class="node"><rect x="40" y="560" width="170" height="56" rx="8"/><text x="125" y="584" class="nt">Slack channel</text><text x="125" y="603" class="ns">incoming webhook app</text></g>
-  <text x="760" y="630" text-anchor="end" class="glabel">Outside the dashed box: cloud and external services</text>
+  <g class="node"><rect x="290" y="150" width="190" height="60" rx="8"/><text x="385" y="176" class="nt">Your session</text><text x="385" y="196" class="ns m-opus">interactive · its model</text></g>
+  <g class="node db"><path d="M570,155 A95,10 0 0 1 760,155 V200 A95,10 0 0 1 570,200 Z" class="cyl"/><path d="M570,155 A95,10 0 0 0 760,155" class="cyl-top"/><text x="665" y="181" class="nt">Artifact database</text><text x="665" y="198" class="ns">waits · meta</text></g>
+  <g class="node"><rect x="290" y="300" width="190" height="80" rx="8"/><text x="385" y="328" class="nt">waits.sh loop</text><text x="385" y="348" class="ns m-none">bash · no model</text><text x="385" y="366" class="ns">probes every 20 min</text></g>
+  <g class="node"><rect x="570" y="300" width="190" height="70" rx="8"/><text x="665" y="328" class="nt">GitHub · Jira · Confluence</text><text x="665" y="350" class="ns">Slack · Claude Docs</text></g>
+  <g class="node"><rect x="290" y="430" width="190" height="70" rx="8"/><text x="385" y="456" class="nt">claude -p check run</text><text x="385" y="476" class="ns m-haiku">Haiku · on change · hourly</text></g>
+  <g class="node"><rect x="40" y="430" width="170" height="70" rx="8"/><text x="125" y="456" class="nt">delivery run</text><text x="125" y="476" class="ns m-haiku">Haiku · SendMessage</text></g>
+  <g class="node"><rect x="40" y="560" width="170" height="70" rx="8"/><text x="125" y="586" class="nt">claude -p --resume</text><text x="125" y="606" class="ns m-opus">its model · auto · ≤ 30 min</text></g>
+  <g class="node"><rect x="570" y="560" width="190" height="56" rx="8"/><text x="665" y="584" class="nt">Slack channel</text><text x="665" y="603" class="ns">incoming webhook app</text></g>
+  <text x="760" y="668" text-anchor="end" class="glabel">Outside the dashed box: cloud and external services</text>
 </svg>
     </div>
+    <p class="note" style="margin-top:8px">Orange: telling the session that registered a finished wait. A running session gets a message on its socket, found by session id. A session that is not running is resumed headless in its own working directory; one that cannot be resumed waits in a queue, retried every tick for up to 24 h and 3 tries.</p>
   </section>
 
   <section>
@@ -116,27 +123,31 @@ code{font-family:var(--mono);font-size:13px}
     <div class="tbl"><table>
       <thead><tr><th>Part</th><th>Model</th><th>Runs when</th><th>Does</th></tr></thead>
       <tbody>
-        <tr><td>Interactive sessions</td><td><span class="tag t-opus">the session's model</span></td><td>when you or a session asks</td><td>resolve the session, register, reset or close waits, answer "what am I waiting on?", run <code>waits.sh check &lt;id&gt;</code> right after registering</td></tr>
-        <tr><td>Check run (<code>claude -p</code>)</td><td><span class="tag t-sonnet">Sonnet (<code>MODEL</code>)</span></td><td>once every 10 min, 15 min cap</td><td>check each open wait read-only, write results, purge archived waits after 24 h, write the Slack text, and tell the waiting session "the wait is over, go check"</td></tr>
-        <tr><td><code>waits.sh</code> loop</td><td><span class="tag t-none">no model</span></td><td>always, while the machine is up</td><td>start the check run, parse its results, post Slack texts via webhook, warn after 18 failed runs in a row</td></tr>
+        <tr><td>Interactive sessions</td><td><span class="tag t-opus">the session's model</span></td><td>when you or a session asks</td><td>register, reset or close waits, answer "what am I waiting on?", run <code>waits.sh check &lt;id&gt;</code> right after registering</td></tr>
+        <tr><td><code>waits.sh</code> loop</td><td><span class="tag t-none">no model</span></td><td>every 20 min, while the machine is up</td><td>run each wait's probes (a read-only <code>gh api</code> GET or a file), start the check run for the waits whose probe changed or a full check every hour, post Slack texts via webhook, run delivery, retry the session queue, warn after 2 failed runs in a row</td></tr>
+        <tr><td>Check run (<code>claude -p</code>)</td><td><span class="tag t-haiku">Haiku (<code>MODEL</code>)</span></td><td>when a probe changed, and hourly for every open wait; 15 min cap</td><td>check each wait read-only, write results and new probes, purge archived waits after 24 h, write the Slack text and the session message</td></tr>
+        <tr><td>Delivery run</td><td><span class="tag t-haiku">Haiku (<code>HELPER_MODEL</code>)</span></td><td>after a check finishes a wait whose session is running; 5 min cap</td><td>send the message verbatim to that session's socket, in default mode with only SendMessage and ListAgents</td></tr>
+        <tr><td>Resumed session</td><td><span class="tag t-opus">the session's model</span></td><td>when the registering session is not running; 30 min cap</td><td>read the result and carry on with that session's work in auto mode with no tool limits; never started while a live process holds the session</td></tr>
+        <tr><td>Record and sync runs</td><td><span class="tag t-haiku">Haiku (<code>HELPER_MODEL</code>)</span></td><td>after delivery, and after every full check</td><td>write delivery outcomes, and keep each wait's session name, title and cwd equal to what <code>sessions.py --diff</code> reports; ArtifactData only</td></tr>
         <tr><td>Board page</td><td><span class="tag t-none">no model</span></td><td>when opened</td><td>show the database live; memos, cancel, reset, archive, add to-dos</td></tr>
       </tbody>
     </table></div>
-    <p class="note" style="margin-top:8px">Almost all cost is the check run, and it grows with the number of open waits.</p>
+    <p class="note" style="margin-top:8px">Most ticks call no model: only a changed probe, a fresh wait without probes, or the hourly full check starts the check run.</p>
   </section>
 
   <section>
     <h2>What keeps running</h2>
     <div class="grid">
       <div class="item"><b>waits.sh loop</b><span>A setsid process; its pid is in <code>~/waits/loop.pid</code>. It dies when the machine or container restarts; start it again with <code>waits.sh start</code>.</span></div>
-      <div class="item"><b>claude -p (Sonnet)</b><span>Started by the loop every 10 minutes and gone when done. Runs in permission mode <code>auto</code> (sessions hold messages from a <code>bypassPermissions</code> sender) with a deny list that blocks Slack posting, gh writes, git, kubectl and curl.</span></div>
+      <div class="item"><b>claude -p check run</b><span>Started by the loop and gone when done. Runs in permission mode <code>auto</code> with a deny list that blocks Slack posting, gh writes, git, kubectl and curl.</span></div>
+      <div class="item"><b>claude -p --resume</b><span>Started only for a finished wait whose session is not running. It acts with your access, like the session itself; its report lands in that session's transcript.</span></div>
     </div>
   </section>
 
   <section>
     <h2>The database (the only copy)</h2>
     <div class="grid">
-      <div class="item"><b>waits/&lt;id&gt;</b><span>Waits are <code>w…</code>, to-dos <code>t…</code>. Status open · done · stuck · cancelled; archived ones carry <code>deleted_at</code>.</span></div>
+      <div class="item"><b>waits/&lt;id&gt;</b><span>Waits are <code>w…</code>, to-dos <code>t…</code>. Status open · done · stuck · cancelled; archived ones carry <code>deleted_at</code>. Every write is pinned to the version it read.</span></div>
       <div class="item"><b>meta/status</b><span>Last run time and "open N · done M · errors K".</span></div>
       <div class="item"><b>meta/sessions</b><span>Session list for the board's to-do picker, kept in sync with live sessions by the check run.</span></div>
     </div>
@@ -145,12 +156,13 @@ code{font-family:var(--mono);font-size:13px}
   <section>
     <h2>Files</h2>
     <div class="grid">
-      <div class="item"><b>scripts/waits.sh</b><span>check · loop · start · stop · status · notify · title.</span></div>
-      <div class="item"><b>references/check-prompt.md</b><span>Instructions for the check run: how to check each kind (jira, Confluence, artifact-comment, pr-comment, slack-thread, gh-run) and the Slack and session message formats.</span></div>
-      <div class="item"><b>scripts/sessions.py</b><span>Resolves a session name or id to its id, messaging name and title.</span></div>
+      <div class="item"><b>scripts/waits.sh</b><span>check · tick · sync · loop · start · stop · status · notify · flush · doctor · title.</span></div>
+      <div class="item"><b>references/check-prompt.md</b><span>Instructions for the check run: how to check each kind (jira, Confluence, artifact-comment, pr-comment, slack-thread, gh-run), which probes to write, and the Slack and session message formats.</span></div>
+      <div class="item"><b>scripts/sessions.py</b><span>Resolves a session name or id to its id, name, title and cwd; <code>--diff</code> lists board fields that no longer match.</span></div>
       <div class="item"><b>scripts/board.html</b><span>The board page; publish it as an artifact with the db and user capabilities.</span></div>
       <div class="item"><b>~/waits/config.env · webhook.url</b><span>Your settings and the Slack webhook URL (a secret, mode 600). Not in the repo.</span></div>
-      <div class="item"><b>~/waits/fail.count · loop.log</b><span>Consecutive runs that could not reach the database, and the run log.</span></div>
+      <div class="item"><b>~/waits/probes.json · session-queue.json</b><span>Each open wait's probes and last fingerprint, and session messages waiting for their session.</span></div>
+      <div class="item"><b>~/waits/fail.count · full.at · loop.log</b><span>Consecutive runs that could not reach the database, the last full check, and the run log.</span></div>
     </div>
   </section>
 
@@ -159,7 +171,7 @@ code{font-family:var(--mono);font-size:13px}
     <div class="grid">
       <div class="item"><b>SKILL.md</b><span>How any session registers, resets and answers about waits, and what to do with a "wait is over" message.</span></div>
       <div class="item"><b>ArtifactData · SendMessage</b><span>Claude Code tools: the database read/write tool, and cross-session messaging on one machine.</span></div>
-      <div class="item"><b>gh · Atlassian · Slack · Claude Docs</b><span>Read-only sources the check run looks at.</span></div>
+      <div class="item"><b>gh · Atlassian · Slack · Claude Docs</b><span>Read-only sources the probes and the check run look at.</span></div>
     </div>
   </section>
 </main>
